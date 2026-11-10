@@ -1,0 +1,38 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.moooo.clicker'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'com.moooo.clicker'
+        minSdk 21
+        targetSdk 34
+        versionCode 1
+        versionName '1.0'
+    }
+
+    signingConfigs {
+        release {
+            // Keystore & password datang dari environment (diisi workflow CI), tidak disimpan di repo.
+            storeFile file(System.getenv('MOOOO_KEYSTORE') ?: 'moooo.keystore')
+            storePassword System.getenv('MOOOO_KS_PASS')
+            keyAlias System.getenv('MOOOO_KEY_ALIAS') ?: 'moooo'
+            keyPassword System.getenv('MOOOO_KS_PASS')
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.release
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}

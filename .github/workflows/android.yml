@@ -1,0 +1,80 @@
+name: Build APK
+
+on:
+  push:
+    paths:
+      - "index.html"
+      - "style.css"
+      - "game.js"
+      - "assets/**"
+      - "android/**"
+      - ".github/workflows/android.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Siapkan file game
+        run: ./android/prepare-web.sh
+
+      - name: Siapkan keystore
+        env:
+          KS_B64: ${{ secrets.MOOOO_KEYSTORE_B64 }}
+          KS_PASS: ${{ secrets.MOOOO_KS_PASS }}
+          KEY_ALIAS: ${{ secrets.MOOOO_KEY_ALIAS }}
+        run: |
+          KS="$RUNNER_TEMP/moooo.keystore"
+          if [ -n "$KS_B64" ] && [ -n "$KS_PASS" ]; then
+            echo "Pakai keystore dari secrets."
+            echo "$KS_B64" | base64 -d > "$KS"
+            echo "MOOOO_KS_PASS=$KS_PASS" >> "$GITHUB_ENV"
+            echo "MOOOO_KEY_ALIAS=${KEY_ALIAS:-moooo}" >> "$GITHUB_ENV"
+          else
+            echo "::warning::Secret MOOOO_KEYSTORE_B64 belum diisi - pakai keystore sementara (update APK perlu uninstall dulu)."
+            PASS="$(openssl rand -hex 16)"
+            echo "::add-mask::$PASS"
+            keytool -genkeypair -keystore "$KS" -alias moooo -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass "$PASS" -keypass "$PASS" -dname "CN=MOOOO Clicker, O=MOOOO, C=ID"
+            echo "MOOOO_KS_PASS=$PASS" >> "$GITHUB_ENV"
+            echo "MOOOO_KEY_ALIAS=moooo" >> "$GITHUB_ENV"
+          fi
+          echo "MOOOO_KEYSTORE=$KS" >> "$GITHUB_ENV"
+
+      - name: Build APK
+        run: gradle -p android assembleRelease --no-daemon
+
+      - name: Ganti nama APK
+        run: cp android/app/build/outputs/apk/release/app-release.apk MOOOO-Clicker.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MOOOO-Clicker-apk
+          path: MOOOO-Clicker.apk
+
+      - name: Rilis APK
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: apk-build-${{ github.run_number }}
+          name: MOOOO Clicker APK (build ${{ github.run_number }})
+          target_commitish: ${{ github.sha }}
+          body: |
+            Download **MOOOO-Clicker.apk** di bawah, buka di HP Android, lalu izinkan "Install dari sumber tidak dikenal".
+          files: MOOOO-Clicker.apk
+          make_latest: true

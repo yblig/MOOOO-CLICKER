@@ -26,3 +26,19 @@ style.css    – tampilan & animasi
 game.js      – logika game, partikel, audio
 assets/      – ikon SVG (logo, lonceng, badai, mega, piala, susu, suara)
 ```
+
+## 📱 APK Android
+Folder `android/` berisi aplikasi Android (WebView) yang membungkus game ini — jalan **offline** (font ikut dibundel).
+
+APK dibuild otomatis oleh GitHub Actions (`.github/workflows/android.yml`) setiap ada perubahan,
+lalu diunggah ke halaman **Releases** repo sebagai `MOOOO-Clicker.apk` (juga sebagai artifact di tab Actions).
+
+Build manual (butuh Android SDK + Gradle):
+```
+./android/prepare-web.sh
+MOOOO_KEYSTORE=/path/ke/keystore MOOOO_KS_PASS=... gradle -p android assembleRelease
+```
+
+Tanda tangan APK: kalau secret repo `MOOOO_KEYSTORE_B64` (keystore dalam base64), `MOOOO_KS_PASS`, dan opsional
+`MOOOO_KEY_ALIAS` diisi, semua build pakai kunci yang sama (bisa update tanpa uninstall). Kalau belum diisi,
+CI membuat keystore sementara tiap build — APK tetap bisa diinstall, tapi untuk update harus uninstall versi lama dulu.

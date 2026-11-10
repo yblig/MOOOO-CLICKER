@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>MOOOO Clicker</title>
+  <meta name="description" content="Pencet sapinya sampai skor 1000! Game clicker sapi penuh efek." />
+  <link rel="icon" href="assets/logo.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@700;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- ===== LATAR BELAKANG ===== -->
+  <div id="sky">
+    <div class="sun"><div class="sun-rays"></div></div>
+    <div class="cloud c1"></div><div class="cloud c2"></div><div class="cloud c3"></div><div class="cloud c4"></div>
+    <div class="hill h1"></div><div class="hill h2"></div><div class="hill h3"></div>
+    <div class="fence"></div>
+    <div class="grass"></div>
+  </div>
+  <div id="rainbow"></div>
+  <div id="flash"></div>
+  <canvas id="fx"></canvas>
+
+  <div id="app">
+    <!-- ===== HEADER ===== -->
+    <header class="hud">
+      <div class="brand">
+        <img src="assets/logo.svg" alt="" class="brand-logo" />
+        <span class="brand-text">MOOOO<span>CLICKER</span></span>
+      </div>
+      <div class="hud-right">
+        <div class="pill" title="Waktu"><span class="pill-ico">⏱</span><span id="timer">0.0s</span></div>
+        <div class="pill" title="Rekor tercepat"><span class="pill-ico">🏆</span><span id="best">—</span></div>
+        <button id="muteBtn" class="icon-btn" aria-label="Suara"><img src="assets/sound-on.svg" alt="" /></button>
+      </div>
+    </header>
+
+    <!-- ===== SKOR ===== -->
+    <section class="score-wrap">
+      <div class="score-label">SKOR</div>
+      <div id="score" class="score">0</div>
+      <div class="goal">
+        <div class="bottle">
+          <div id="bottleFill" class="bottle-fill"><div class="wave"></div></div>
+          <div class="bottle-shine"></div>
+          <div id="progressText" class="bottle-text">0 / 1000</div>
+        </div>
+        <div class="milestones">
+          <span data-m="100">100</span><span data-m="250">250</span><span data-m="500">500</span><span data-m="750">750</span><span data-m="1000">1000</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== SAPI ===== -->
+    <section class="stage">
+      <div id="comboBox" class="combo">
+        <div id="comboText" class="combo-text">COMBO x1</div>
+        <div class="combo-bar"><div id="comboFill"></div></div>
+      </div>
+
+      <div class="cow-holder">
+        <div class="aura" id="aura"></div>
+        <div class="spot-ring"></div>
+        <button id="cow" class="cow-btn" aria-label="Pencet sapinya!">
+          <svg id="cowSvg" viewBox="0 0 400 400" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <radialGradient id="headG" cx="42%" cy="32%" r="75%">
+                <stop offset="0" stop-color="#ffffff"/>
+                <stop offset=".7" stop-color="#f4efe6"/>
+                <stop offset="1" stop-color="#d8cfbf"/>
+              </radialGradient>
+              <radialGradient id="snoutG" cx="45%" cy="30%" r="80%">
+                <stop offset="0" stop-color="#ffd3df"/>
+                <stop offset=".7" stop-color="#ff9fb8"/>
+                <stop offset="1" stop-color="#e57898"/>
+              </radialGradient>
+              <linearGradient id="hornG" x1="0" y1="1" x2="0" y2="0">
+                <stop offset="0" stop-color="#d9b25c"/>
+                <stop offset="1" stop-color="#fff2c4"/>
+              </linearGradient>
+              <radialGradient id="earG" cx="50%" cy="50%" r="60%">
+                <stop offset="0" stop-color="#ffb3c6"/>
+                <stop offset="1" stop-color="#f08aa6"/>
+              </radialGradient>
+              <linearGradient id="bellG" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stop-color="#fff3a8"/>
+                <stop offset=".5" stop-color="#ffc83d"/>
+                <stop offset="1" stop-color="#c97a00"/>
+              </linearGradient>
+              <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
+                <feDropShadow dx="0" dy="10" stdDeviation="8" flood-color="#3b2a14" flood-opacity=".35"/>
+              </filter>
+            </defs>
+
+            <g filter="url(#soft)">
+              <!-- tanduk -->
+              <path id="hornL" d="M128 92 C 100 60 96 30 112 10 C 120 40 140 62 160 78 Z" fill="url(#hornG)" stroke="#2b2118" stroke-width="6" stroke-linejoin="round"/>
+              <path id="hornR" d="M272 92 C 300 60 304 30 288 10 C 280 40 260 62 240 78 Z" fill="url(#hornG)" stroke="#2b2118" stroke-width="6" stroke-linejoin="round"/>
+
+              <!-- telinga -->
+              <g id="earL" class="ear ear-l">
+                <ellipse cx="70" cy="128" rx="58" ry="28" transform="rotate(-22 70 128)" fill="#f4efe6" stroke="#2b2118" stroke-width="6"/>
+                <ellipse cx="74" cy="128" rx="38" ry="15" transform="rotate(-22 74 128)" fill="url(#earG)"/>
+              </g>
+              <g id="earR" class="ear ear-r">
+                <ellipse cx="330" cy="128" rx="58" ry="28" transform="rotate(22 330 128)" fill="#f4efe6" stroke="#2b2118" stroke-width="6"/>
+                <ellipse cx="326" cy="128" rx="38" ry="15" transform="rotate(22 326 128)" fill="url(#earG)"/>
+              </g>
+
+              <!-- kepala -->
+              <path d="M200 58 C 290 58 318 120 314 190 C 310 250 290 290 200 296 C 110 290 90 250 86 190 C 82 120 110 58 200 58 Z"
+                    fill="url(#headG)" stroke="#2b2118" stroke-width="7"/>
+              <!-- bercak -->
+              <path d="M112 112 C 130 80 176 78 182 108 C 188 138 150 150 132 170 C 116 186 96 160 104 140 C 106 128 108 120 112 112 Z" fill="#2b2118"/>
+              <path d="M262 84 C 290 88 304 118 296 140 C 286 128 266 130 254 116 C 244 104 248 86 262 84 Z" fill="#2b2118"/>
+              <ellipse cx="282" cy="236" rx="16" ry="10" fill="#2b2118" transform="rotate(-30 282 236)"/>
+              <!-- poni -->
+              <path d="M170 66 q10 -26 22 -4 q8 -26 22 -2 q12 -20 18 6 q-30 14 -62 0z" fill="#2b2118"/>
+
+              <!-- mata -->
+              <g id="eyes">
+                <g class="eye" id="eyeL">
+                  <ellipse cx="150" cy="168" rx="30" ry="34" fill="#fff" stroke="#2b2118" stroke-width="6"/>
+                  <g class="pupil"><circle cx="154" cy="172" r="17" fill="#2b2118"/><circle cx="161" cy="164" r="6" fill="#fff"/><circle cx="148" cy="180" r="3" fill="#fff"/></g>
+                  <rect class="lid" x="116" y="130" width="70" height="0" fill="#f4efe6"/>
+                </g>
+                <g class="eye" id="eyeR">
+                  <ellipse cx="250" cy="168" rx="30" ry="34" fill="#fff" stroke="#2b2118" stroke-width="6"/>
+                  <g class="pupil"><circle cx="246" cy="172" r="17" fill="#2b2118"/><circle cx="253" cy="164" r="6" fill="#fff"/><circle cx="240" cy="180" r="3" fill="#fff"/></g>
+                  <rect class="lid" x="214" y="130" width="70" height="0" fill="#f4efe6"/>
+                </g>
+              </g>
+              <!-- mata senang (^ ^) -->
+              <g id="happyEyes" opacity="0">
+                <path d="M124 172 q26 -34 52 0" fill="none" stroke="#2b2118" stroke-width="9" stroke-linecap="round"/>
+                <path d="M224 172 q26 -34 52 0" fill="none" stroke="#2b2118" stroke-width="9" stroke-linecap="round"/>
+              </g>
+              <!-- pipi merona -->
+              <ellipse class="blush" cx="112" cy="214" rx="20" ry="11" fill="#ff7fa3" opacity=".55"/>
+              <ellipse class="blush" cx="288" cy="214" rx="20" ry="11" fill="#ff7fa3" opacity=".55"/>
+
+              <!-- moncong -->
+              <ellipse cx="200" cy="250" rx="92" ry="58" fill="url(#snoutG)" stroke="#2b2118" stroke-width="7"/>
+              <ellipse cx="176" cy="226" rx="34" ry="10" fill="#fff" opacity=".45"/>
+              <ellipse class="nostril" cx="166" cy="246" rx="12" ry="17" fill="#7a3b4b"/>
+              <ellipse class="nostril" cx="234" cy="246" rx="12" ry="17" fill="#7a3b4b"/>
+              <!-- mulut -->
+              <path id="mouthSmile" d="M170 280 q30 18 60 0" fill="none" stroke="#7a3b4b" stroke-width="6" stroke-linecap="round"/>
+              <g id="mouthMoo" opacity="0">
+                <ellipse cx="200" cy="284" rx="22" ry="16" fill="#5a1f2e" stroke="#2b2118" stroke-width="4"/>
+                <ellipse cx="200" cy="292" rx="12" ry="6" fill="#ff6b8b"/>
+              </g>
+
+              <!-- kalung + lonceng -->
+              <path d="M128 300 q72 34 144 0" fill="none" stroke="#c0392b" stroke-width="14" stroke-linecap="round"/>
+              <path d="M128 300 q72 34 144 0" fill="none" stroke="#e74c3c" stroke-width="6" stroke-linecap="round"/>
+              <g id="cowBell">
+                <path d="M184 318 h32 l8 44 h-48z" fill="url(#bellG)" stroke="#2b2118" stroke-width="5" stroke-linejoin="round"/>
+                <circle cx="200" cy="366" r="7" fill="#7a4b00" stroke="#2b2118" stroke-width="3"/>
+                <path d="M190 326 l-3 28" stroke="#fff" stroke-width="4" stroke-linecap="round" opacity=".7"/>
+              </g>
+            </g>
+          </svg>
+        </button>
+        <div class="shadow"></div>
+      </div>
+
+      <div id="hint" class="hint">👆 PENCET SAPINYA! <small>(atau tekan SPASI)</small></div>
+    </section>
+
+    <!-- ===== POWER UPS ===== -->
+    <section class="powers">
+      <button class="power" id="pBell" data-power="bell">
+        <img src="assets/bell.svg" alt="" />
+        <span class="p-name">Lonceng Emas</span>
+        <span class="p-desc">x2 poin · 8 detik</span>
+        <span class="p-cd"></span>
+        <span class="p-lock">🔒 skor 50</span>
+      </button>
+      <button class="power" id="pStorm" data-power="storm">
+        <img src="assets/storm.svg" alt="" />
+        <span class="p-name">Badai Susu</span>
+        <span class="p-desc">auto-pencet · 6 detik</span>
+        <span class="p-cd"></span>
+        <span class="p-lock">🔒 skor 150</span>
+      </button>
+      <button class="power" id="pMega" data-power="mega">
+        <img src="assets/mega.svg" alt="" />
+        <span class="p-name">MEGA MOO</span>
+        <span class="p-desc">ledakan +40 poin</span>
+        <span class="p-cd"></span>
+        <span class="p-lock">🔒 skor 300</span>
+      </button>
+    </section>
+  </div>
+
+  <!-- sapi emas bonus -->
+  <button id="goldCow" class="gold-cow" aria-label="Sapi emas bonus">
+    <img src="assets/logo.svg" alt="" />
+    <span>+25</span>
+  </button>
+
+  <!-- banner milestone -->
+  <div id="banner" class="banner"><span id="bannerText"></span></div>
+
+  <!-- layar mulai -->
+  <div id="startScreen" class="overlay show">
+    <div class="card">
+      <img src="assets/logo.svg" class="card-logo bounce" alt="" />
+      <h1>MOOOO<br /><span>CLICKER</span></h1>
+      <p>Pencet si sapi sebanyak-banyaknya sampai <b>skor 1000</b>!<br />Pencet cepat untuk <b>COMBO</b>, tangkap <b>sapi emas</b>, dan pakai <b>power-up</b>.</p>
+      <button id="startBtn" class="big-btn">MULAI! 🐄</button>
+    </div>
+  </div>
+
+  <!-- layar menang -->
+  <div id="winScreen" class="overlay">
+    <div class="card win">
+      <img src="assets/trophy.svg" class="trophy" alt="" />
+      <h1>MOOOO<span>NANG!</span></h1>
+      <p class="win-sub">Kamu mencapai <b>1000</b> poin!</p>
+      <div class="stats">
+        <div><small>Waktu</small><b id="wTime">0s</b></div>
+        <div><small>Pencetan</small><b id="wClicks">0</b></div>
+        <div><small>Combo Maks</small><b id="wCombo">x1</b></div>
+        <div><small>Sapi Emas</small><b id="wGold">0</b></div>
+      </div>
+      <div id="newRecord" class="new-record">⭐ REKOR BARU! ⭐</div>
+      <button id="againBtn" class="big-btn">MAIN LAGI 🔁</button>
+    </div>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>

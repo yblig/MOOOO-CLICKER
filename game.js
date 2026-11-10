@@ -675,7 +675,7 @@
   }
 
   function hitCow(x, y, { auto = false } = {}) {
-    if (!S.running) return;
+    if (!S.running || pausedAt) return;
     const now = performance.now();
 
     if (!auto) {
@@ -728,6 +728,7 @@
       }
     });
     updateHUD();
+    window.dispatchEvent(new CustomEvent("moooo:score", { detail: { score: S.score, before } }));
     if (S.score >= GOAL) win();
   }
 
@@ -909,6 +910,9 @@
   cowBtn.addEventListener("click", (e) => e.preventDefault());
 
   window.addEventListener("keydown", (e) => {
+    if (document.body.classList.contains("tools-open")) return; // lagi pakai Alat Belajar
+    const tag = (e.target && e.target.tagName) || "";
+    if (/^(INPUT|TEXTAREA|SELECT)$/.test(tag)) return;
     if (e.code === "Space" || e.code === "Enter") {
       if (!S.running) {
         // hanya layar awal yang bisa dimulai pakai keyboard (biar spam spasi tidak melewati layar menang)
@@ -961,6 +965,43 @@
   }
   function renderBest() { bestEl.textContent = best ? best.toFixed(1) + "s" : "—"; }
 
+  /* ---------- Jeda (dipakai saat membuka Alat Belajar) ---------- */
+  let pausedAt = 0;
+  function pause() {
+    if (!S.running || pausedAt) return;
+    pausedAt = performance.now();
+    music.stop();
+    sfx.stormStop();
+  }
+  function resume() {
+    if (!pausedAt) return;
+    const shift = performance.now() - pausedAt;
+    pausedAt = 0;
+    if (!S.running) return;
+    ["startTime", "lastClick", "boostUntil", "nextGold", "nextBeat"].forEach((k) => { if (S[k]) S[k] += shift; });
+    if (S.stormUntil) S.stormUntil += shift;
+    if (S.goldUntil) S.goldUntil += shift;
+    Object.keys(S.cdUntil).forEach((k) => { if (S.cdUntil[k]) S.cdUntil[k] += shift; });
+    if (musicOn) music.start();
+    if (performance.now() < S.stormUntil) sfx.stormStart();
+  }
+
+  // API kecil untuk tools.js (Alat Belajar & Soal Sapi)
+  window.MOOOO = {
+    sfx,
+    pause,
+    resume,
+    isRunning: () => S.running && !pausedAt,
+    bonus(points, label) {
+      if (!S.running || pausedAt) return;
+      const { x, y } = cowCenter();
+      if (label) floatText(x, y - 90, label, { size: 34, color: "#6bcb77", life: 1.2 });
+      burst(x, y, 2);
+      confetti(x, y, 60);
+      addScore(points, x, y - 40, "#6bcb77");
+    },
+  };
+
   /* =========================================================
      LOOP UTAMA
      ========================================================= */
@@ -969,7 +1010,7 @@
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
 
-    if (S.running) {
+    if (S.running && !pausedAt) {
       timerEl.textContent = ((now - S.startTime) / 1000).toFixed(1) + "s";
 
       // combo meluruh

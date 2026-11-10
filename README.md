@@ -14,6 +14,21 @@ Buka `index.html` di browser, lalu pencet sapinya (klik / tap / tombol **SPASI**
 - **Milestone** 100 / 250 / 500 / 750 — banner, confetti, hujan emoji.
 - **1000** — kembang api, fanfare, statistik & rekor waktu tercepat (disimpan di browser).
 
+## 🧮 Alat Belajar
+Tombol kalkulator hijau di pojok atas (atau di layar awal/menang). Game otomatis dijeda selama dibuka.
+
+- **Pecahan** — `1/4`, pecahan campuran `3 1/4`, desimal, `%`, `^`, `√`, kurung. Hasil: pecahan biasa, campuran,
+  desimal & persen, **lengkap dengan langkah pengerjaan** (samakan penyebut/KPK, kali kebalikan, sederhanakan/FPB). Ada riwayat.
+- **FPB & KPK** — dengan faktorisasi prima.
+- **Persen** — x% dari y, berapa persen, naik/turun, diskon.
+- **Persamaan** — linear, kuadrat (rumus ABC), SPLDV (Cramer); koefisien boleh pecahan; ada langkahnya.
+- **Statistik** — rata-rata, median, modus, kuartil, jangkauan, varians, simpangan baku.
+- **Konversi** — panjang, massa, luas, volume, waktu, suhu, kecepatan, data.
+- **IPK** — hitung IPK/IPS + predikat, tersimpan di HP.
+- **Fokus** — timer Pomodoro 25/5/15/50 menit, sapi bilang "moo" saat selesai.
+
+**Soal Sapi**: tiap 150 poin muncul soal kilat (pecahan, persen, FPB). Jawab benar dalam 10 detik → **+30 poin**.
+
 ## Efek
 Partikel canvas (tetes susu, bintang, hati, percikan, daun, confetti, kembang api, gelombang kejut),
 sapi SVG animasi (kedip, mata mengikuti kursor, telinga mengepak, lonceng bergoyang, ekspresi senang),
@@ -33,6 +48,8 @@ screen shake, flash, dan latar pelangi saat frenzy.
 index.html   – layout + sapi SVG
 style.css    – tampilan & animasi
 game.js      – logika game, partikel, audio
+tools.js     – Alat Belajar (kalkulator pecahan dll) + Soal Sapi
+tools.css    – tampilan Alat Belajar
 assets/      – ikon SVG (logo, lonceng, badai, mega, piala, susu, suara)
 ```
 

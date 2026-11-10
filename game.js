@@ -37,6 +37,7 @@
   const bannerText = $("bannerText");
   const flash = $("flash");
   const muteBtn = $("muteBtn");
+  const musicBtn = $("musicBtn");
   const eyeL = $("eyeL");
   const eyeR = $("eyeR");
   const eyesG = $("eyes");
@@ -79,44 +80,71 @@
       nextGold: 0,
       goldUntil: 0,
       goldVX: 0, goldVY: 0, goldX: 0, goldY: 0,
+      nextBeat: 0,
+      wasReady: { bell: false, storm: false, mega: false },
     };
   }
   S = freshState();
 
   let best = parseFloat(store.get("moooo-best")) || 0;
   let muted = store.get("moooo-muted") === "1";
+  let musicOn = store.get("moooo-music") !== "0";
   renderBest();
   renderMute();
+  renderMusic();
 
   /* =========================================================
      AUDIO — semua disintesis pakai WebAudio, tanpa file
      ========================================================= */
   let actx = null;
-  let master = null;
+  let master = null, sfxBus = null, musicBus = null;
+  let noiseBuf = null;
   function audio() {
     if (!actx) {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return null;
       actx = new AC();
+      const comp = actx.createDynamicsCompressor();
+      comp.threshold.value = -14; comp.ratio.value = 4;
       master = actx.createGain();
-      master.gain.value = 0.5;
-      master.connect(actx.destination);
+      master.gain.value = muted ? 0 : 0.6;
+      sfxBus = actx.createGain(); sfxBus.gain.value = 1;
+      musicBus = actx.createGain(); musicBus.gain.value = 0.32;
+      sfxBus.connect(master); musicBus.connect(master);
+      master.connect(comp); comp.connect(actx.destination);
+      // satu buffer noise dipakai ulang (hemat CPU)
+      noiseBuf = actx.createBuffer(1, actx.sampleRate * 2, actx.sampleRate);
+      const d = noiseBuf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
     }
     if (actx.state === "suspended") actx.resume();
     return actx;
   }
+  function setMasterMute() {
+    if (master) master.gain.setTargetAtTime(muted ? 0 : 0.6, actx.currentTime, 0.03);
+  }
 
-  function tone({ type = "sine", f0 = 440, f1 = f0, dur = 0.15, vol = 0.3, delay = 0, filter = 0 }) {
-    if (muted) return;
-    const a = audio(); if (!a) return;
-    const t = a.currentTime + delay;
+  function tone({ type = "sine", f0 = 440, f1 = f0, dur = 0.15, vol = 0.3, delay = 0, filter = 0, attack = 0.01, at = 0, bus, vib = 0, glide = "exp" }) {
+    const a = audio(); if (!a || muted) return;
+    if (f0 > 16000) return; // di atas pendengaran, lewati
+    f1 = Math.min(f1, 18000);
+    const t = (at || a.currentTime) + delay;
     const o = a.createOscillator();
     const g = a.createGain();
     o.type = type;
     o.frequency.setValueAtTime(f0, t);
-    o.frequency.exponentialRampToValueAtTime(Math.max(1, f1), t + dur);
+    if (f1 !== f0) {
+      if (glide === "exp") o.frequency.exponentialRampToValueAtTime(Math.max(1, f1), t + dur);
+      else o.frequency.linearRampToValueAtTime(f1, t + dur);
+    }
+    if (vib) {
+      const lfo = a.createOscillator(), lg = a.createGain();
+      lfo.frequency.value = 7; lg.gain.value = vib;
+      lfo.connect(lg); lg.connect(o.frequency);
+      lfo.start(t); lfo.stop(t + dur + 0.05);
+    }
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(vol, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(vol, t + attack);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     let node = o;
     if (filter) {
@@ -124,90 +152,278 @@
       lp.type = "lowpass"; lp.frequency.value = filter;
       o.connect(lp); node = lp;
     }
-    node.connect(g); g.connect(master);
+    node.connect(g); g.connect(bus || sfxBus);
     o.start(t); o.stop(t + dur + 0.05);
   }
 
-  function noise({ dur = 0.3, vol = 0.3, freq = 800, delay = 0 }) {
-    if (muted) return;
-    const a = audio(); if (!a) return;
-    const t = a.currentTime + delay;
-    const buf = a.createBuffer(1, Math.floor(a.sampleRate * dur), a.sampleRate);
-    const d = buf.getChannelData(0);
-    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
-    const src = a.createBufferSource(); src.buffer = buf;
-    const lp = a.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = freq;
-    const g = a.createGain(); g.gain.value = vol;
-    src.connect(lp); lp.connect(g); g.connect(master);
-    src.start(t);
+  function noise({ dur = 0.3, vol = 0.3, freq = 800, f1 = 0, type = "lowpass", q = 1, delay = 0, at = 0, attack = 0.005, bus }) {
+    const a = audio(); if (!a || muted) return;
+    const t = (at || a.currentTime) + delay;
+    const src = a.createBufferSource(); src.buffer = noiseBuf;
+    const f = a.createBiquadFilter(); f.type = type; f.Q.value = q;
+    f.frequency.setValueAtTime(freq, t);
+    if (f1) f.frequency.exponentialRampToValueAtTime(f1, t + dur);
+    const g = a.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + attack);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(f); f.connect(g); g.connect(bus || sfxBus);
+    src.start(t, Math.random() * 1.5); src.stop(t + dur + 0.05);
   }
 
+  // ---------- suara "moo" ----------
+  function mooVoice({ pitch = 1, dur = 0.9, at = 0, vol = 0.5, shape = "long" }) {
+    const a = audio(); if (!a || muted) return;
+    const t = at || a.currentTime;
+    const o = a.createOscillator(), o2 = a.createOscillator();
+    const vib = a.createOscillator(), vibG = a.createGain();
+    const f1 = a.createBiquadFilter(), f2 = a.createBiquadFilter();
+    const g = a.createGain();
+    o.type = "sawtooth"; o2.type = "square";
+    const base = 150 * pitch;
+    o.frequency.setValueAtTime(base * 0.9, t);
+    o.frequency.linearRampToValueAtTime(base * 1.12, t + dur * 0.28);
+    o.frequency.linearRampToValueAtTime(base * (shape === "question" ? 1.35 : 0.78), t + dur);
+    o2.frequency.setValueAtTime(base * 0.45, t);
+    o2.frequency.linearRampToValueAtTime(base * 0.39, t + dur);
+    vib.frequency.value = shape === "bull" ? 4 : 6; vibG.gain.value = base * 0.03;
+    vib.connect(vibG); vibG.connect(o.frequency);
+    f1.type = "bandpass"; f1.Q.value = 3;
+    f1.frequency.setValueAtTime(380 * pitch, t);
+    f1.frequency.linearRampToValueAtTime(900 * pitch, t + dur * 0.33); // "mmm" -> "ooo"
+    f1.frequency.linearRampToValueAtTime(500 * pitch, t + dur);
+    f2.type = "lowpass"; f2.frequency.value = 1500 * pitch;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + Math.min(0.12, dur * 0.2));
+    g.gain.setValueAtTime(vol, t + dur * 0.7);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(f1); o2.connect(f1); f1.connect(f2); f2.connect(g); g.connect(sfxBus);
+    [o, o2, vib].forEach((n) => { n.start(t); n.stop(t + dur + 0.05); });
+  }
+
+  // lonceng sapi: partial inharmonik
+  function cowbell(f = 560, vol = 0.18, delay = 0, dur = 0.35) {
+    [1, 1.48].forEach((m) => tone({ type: "square", f0: f * m, dur, vol: vol * 0.5, delay, filter: 2600 }));
+    noise({ dur: 0.04, vol: vol * 0.6, freq: 3000, type: "bandpass", q: 2, delay });
+  }
+  function bellPartials(f = 880, vol = 0.15, delay = 0, dur = 1.4) {
+    [[1, 1], [2.76, 0.5], [5.4, 0.25], [8.93, 0.12]].forEach(([m, v]) =>
+      tone({ type: "sine", f0: f * m, dur: dur / Math.sqrt(m), vol: vol * v, delay, attack: 0.003 }));
+  }
+
+  const NOTE = (n) => 440 * Math.pow(2, (n - 69) / 12); // MIDI -> Hz
+
+  let lastHover = 0;
+  let rainNode = null;
+
   const sfx = {
+    // ---------- klik sapi: 6 variasi acak, nada naik sesuai combo ----------
     pop(combo) {
-      const p = 380 + Math.min(combo, 60) * 12;
-      tone({ type: "triangle", f0: p, f1: p * 1.9, dur: 0.09, vol: 0.22 });
+      const up = Math.pow(2, Math.min(combo, 48) / 48); // naik 1 oktaf sampai combo 48
+      const v = Math.random();
+      if (v < 0.34) tone({ type: "triangle", f0: 380 * up, f1: 760 * up, dur: 0.09, vol: 0.22 });           // pop
+      else if (v < 0.52) { tone({ type: "sine", f0: 180 * up, f1: 520 * up, dur: 0.18, vol: 0.25, vib: 30 }); } // boing
+      else if (v < 0.66) tone({ type: "square", f0: 1100 * up, f1: 1700 * up, dur: 0.07, vol: 0.08, filter: 5000 }); // squeak mainan
+      else if (v < 0.8) { noise({ dur: 0.16, vol: 0.22, freq: 2400, f1: 700, type: "bandpass", q: 3 }); tone({ type: "sine", f0: 700 * up, f1: 300, dur: 0.08, vol: 0.12 }); } // cipratan susu
+      else if (v < 0.92) cowbell(520 * up, 0.16);                                                             // tonk lonceng
+      else { tone({ type: "sine", f0: 90, f1: 45, dur: 0.12, vol: 0.4 }); tone({ type: "triangle", f0: 600 * up, dur: 0.05, vol: 0.12 }); } // bonk
     },
-    moo(pitch = 1) {
-      if (muted) return;
+    moo(pitch = 1) { mooVoice({ pitch }); },
+    randomMoo() {
+      const k = pick(["long", "short", "calf", "bull", "double", "question"]);
+      if (k === "short") mooVoice({ pitch: rnd(0.95, 1.15), dur: 0.4 });
+      else if (k === "calf") mooVoice({ pitch: rnd(1.5, 1.8), dur: 0.5, vol: 0.4 });
+      else if (k === "bull") mooVoice({ pitch: rnd(0.6, 0.7), dur: 1.3, vol: 0.6, shape: "bull" });
+      else if (k === "double") { const a = audio(); if (!a) return; mooVoice({ pitch: 1.1, dur: 0.25 }); mooVoice({ pitch: 1, dur: 0.7, at: a.currentTime + 0.3 }); }
+      else if (k === "question") mooVoice({ pitch: 1.05, dur: 0.7, shape: "question" });
+      else mooVoice({ pitch: rnd(0.85, 1.2) });
+    },
+    mooChoir() {
       const a = audio(); if (!a) return;
-      const t = a.currentTime;
-      const dur = 0.9;
-      const o = a.createOscillator();
-      const o2 = a.createOscillator();
-      const vib = a.createOscillator();
-      const vibG = a.createGain();
-      const f1 = a.createBiquadFilter();
-      const f2 = a.createBiquadFilter();
-      const g = a.createGain();
-      o.type = "sawtooth"; o2.type = "square";
-      const base = 150 * pitch;
-      o.frequency.setValueAtTime(base * 0.9, t);
-      o.frequency.linearRampToValueAtTime(base * 1.12, t + 0.25);
-      o.frequency.linearRampToValueAtTime(base * 0.78, t + dur);
-      o2.frequency.setValueAtTime(base * 0.45, t);
-      o2.frequency.linearRampToValueAtTime(base * 0.39, t + dur);
-      vib.frequency.value = 6; vibG.gain.value = 4;
-      vib.connect(vibG); vibG.connect(o.frequency);
-      f1.type = "bandpass"; f1.Q.value = 3;
-      f1.frequency.setValueAtTime(400, t);
-      f1.frequency.linearRampToValueAtTime(900, t + 0.3); // "mmm" -> "ooo"
-      f1.frequency.linearRampToValueAtTime(500, t + dur);
-      f2.type = "lowpass"; f2.frequency.value = 1400;
-      g.gain.setValueAtTime(0.0001, t);
-      g.gain.exponentialRampToValueAtTime(0.5, t + 0.12);
-      g.gain.setValueAtTime(0.5, t + dur * 0.7);
-      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-      o.connect(f1); o2.connect(f1); f1.connect(f2); f2.connect(g); g.connect(master);
-      [o, o2, vib].forEach((n) => { n.start(t); n.stop(t + dur + 0.05); });
+      [0.8, 1, 1.2, 1.6].forEach((p, i) => mooVoice({ pitch: p, dur: 1.6, vol: 0.28, at: a.currentTime + i * 0.05 }));
     },
-    ding() {
-      [0, 0.08, 0.16].forEach((d, i) => tone({ type: "sine", f0: 880 * (1 + i * 0.26), dur: 0.5, vol: 0.18, delay: d }));
-    },
+    ding() { [0, 0.08, 0.16].forEach((d, i) => tone({ type: "sine", f0: 880 * (1 + i * 0.26), dur: 0.5, vol: 0.18, delay: d })); },
     coin() {
       tone({ type: "square", f0: 988, dur: 0.08, vol: 0.12, filter: 4000 });
       tone({ type: "square", f0: 1319, dur: 0.35, vol: 0.12, delay: 0.08, filter: 4000 });
     },
-    levelUp() {
-      [523, 659, 784, 1047].forEach((f, i) => tone({ type: "triangle", f0: f, dur: 0.18, vol: 0.2, delay: i * 0.06 }));
+    levelUp(level = 1) {
+      const scale = [60, 64, 67, 72, 76, 79, 84];
+      const n = 3 + level;
+      for (let i = 0; i < n; i++) tone({ type: "triangle", f0: NOTE(scale[i % scale.length] + (level - 1) * 2), dur: 0.2, vol: 0.2, delay: i * 0.055 });
+      if (level >= 3) sfx.airHorn();
     },
-    boom() {
-      tone({ type: "sine", f0: 160, f1: 30, dur: 0.6, vol: 0.6 });
-      noise({ dur: 0.6, vol: 0.5, freq: 1200 });
+    airHorn() {
+      [0, 0.18, 0.36].forEach((d, k) => [233, 294, 349].forEach((f) =>
+        tone({ type: "sawtooth", f0: f, dur: k === 2 ? 0.6 : 0.14, vol: 0.07, delay: d, filter: 2200, attack: 0.02 })));
     },
-    whoosh() { noise({ dur: 0.5, vol: 0.25, freq: 2500 }); },
-    fanfare() {
-      const notes = [523, 523, 523, 659, 784, 659, 784, 1047];
-      const times = [0, 0.12, 0.24, 0.36, 0.6, 0.78, 0.9, 1.1];
-      notes.forEach((f, i) => {
-        tone({ type: "square", f0: f, dur: i === notes.length - 1 ? 0.9 : 0.16, vol: 0.12, delay: times[i], filter: 3000 });
-        tone({ type: "triangle", f0: f / 2, dur: 0.2, vol: 0.12, delay: times[i] });
+    comboBreak() {
+      [392, 370, 349, 311].forEach((f, i) => tone({ type: "triangle", f0: f, f1: f * 0.97, dur: i === 3 ? 0.5 : 0.18, vol: 0.14, delay: i * 0.17, vib: i === 3 ? 8 : 0 }));
+    },
+    goldSpawn() {
+      for (let i = 0; i < 8; i++) bellPartials(NOTE(84 + [0, 4, 7, 12, 16, 19, 24, 28][i]), 0.05, i * 0.04, 0.6);
+    },
+    goldCatch() {
+      sfx.coin();
+      [72, 76, 79, 84, 88].forEach((n, i) => tone({ type: "square", f0: NOTE(n), dur: 0.12, vol: 0.08, delay: 0.1 + i * 0.05, filter: 5000 }));
+      mooVoice({ pitch: 1.45, dur: 0.6, vol: 0.35 });
+    },
+    goldMiss() {
+      [[311, 0.3], [294, 0.3], [277, 0.3], [262, 0.9]].reduce((d, [f, l]) => {
+        tone({ type: "sawtooth", f0: f, f1: f * 0.98, dur: l, vol: 0.08, delay: d, filter: 1200, vib: l > 0.5 ? 6 : 0, attack: 0.03 });
+        return d + l;
+      }, 0);
+    },
+    bellPower() {
+      bellPartials(660, 0.22, 0, 2); bellPartials(990, 0.16, 0.15, 1.8); bellPartials(1320, 0.12, 0.3, 1.6);
+      for (let i = 0; i < 10; i++) noise({ dur: 0.05, vol: 0.12, freq: 7000, type: "highpass", delay: i * 0.07 }); // jingle
+    },
+    jingle() { // tiap klik saat Lonceng Emas aktif
+      noise({ dur: 0.06, vol: 0.09, freq: 6500, type: "highpass" });
+      tone({ type: "sine", f0: pick([1568, 1760, 2093]), dur: 0.2, vol: 0.05 });
+    },
+    stormStart() {
+      sfx.thunder();
+      const a = audio(); if (!a || muted) return;
+      sfx.stormStop();
+      const src = a.createBufferSource(); src.buffer = noiseBuf; src.loop = true;
+      const f = a.createBiquadFilter(); f.type = "bandpass"; f.frequency.value = 1800; f.Q.value = 0.6;
+      const g = a.createGain(); g.gain.setValueAtTime(0.0001, a.currentTime); g.gain.exponentialRampToValueAtTime(0.16, a.currentTime + 0.4);
+      src.connect(f); f.connect(g); g.connect(sfxBus); src.start();
+      rainNode = { src, g };
+    },
+    stormStop() {
+      if (!rainNode || !actx) return;
+      const { src, g } = rainNode; rainNode = null;
+      g.gain.setTargetAtTime(0.0001, actx.currentTime, 0.2);
+      src.stop(actx.currentTime + 1);
+    },
+    drip() { tone({ type: "sine", f0: rnd(900, 1500), f1: rnd(1800, 2600), dur: 0.06, vol: 0.06 }); },
+    thunder() {
+      noise({ dur: 1.6, vol: 0.5, freq: 400, f1: 80, attack: 0.02 });
+      noise({ dur: 0.25, vol: 0.35, freq: 3000, f1: 600, delay: 0.05 });
+      tone({ type: "sine", f0: 60, f1: 30, dur: 1.2, vol: 0.35 });
+    },
+    megaCharge() {
+      tone({ type: "sawtooth", f0: 80, f1: 1200, dur: 0.55, vol: 0.12, filter: 3000, attack: 0.3 });
+      noise({ dur: 0.55, vol: 0.18, freq: 300, f1: 6000, type: "bandpass", q: 2, attack: 0.4 });
+    },
+    boom(delay = 0) {
+      tone({ type: "sine", f0: 160, f1: 30, dur: 0.7, vol: 0.7, delay });
+      noise({ dur: 0.9, vol: 0.55, freq: 2000, f1: 120, delay });
+    },
+    whoosh() { noise({ dur: 0.5, vol: 0.25, freq: 400, f1: 4000, type: "bandpass", q: 1.5, attack: 0.2 }); },
+    powerReady() {
+      tone({ type: "sine", f0: 1047, dur: 0.12, vol: 0.12 });
+      tone({ type: "sine", f0: 1568, dur: 0.3, vol: 0.12, delay: 0.09 });
+    },
+    denied() { tone({ type: "square", f0: 160, dur: 0.12, vol: 0.08, filter: 900 }); tone({ type: "square", f0: 120, dur: 0.18, vol: 0.08, delay: 0.1, filter: 900 }); },
+    hover() {
+      const now = performance.now(); if (now - lastHover < 60) return; lastHover = now;
+      tone({ type: "sine", f0: 1800, dur: 0.03, vol: 0.04 });
+    },
+    uiClick() { tone({ type: "triangle", f0: 660, f1: 990, dur: 0.07, vol: 0.14 }); },
+    startJingle() {
+      [[67, 0], [72, 0.1], [76, 0.2], [79, 0.3], [84, 0.45]].forEach(([n, d]) => {
+        tone({ type: "square", f0: NOTE(n), dur: n === 84 ? 0.5 : 0.12, vol: 0.09, delay: d, filter: 4000 });
+        tone({ type: "triangle", f0: NOTE(n - 12), dur: 0.15, vol: 0.12, delay: d });
       });
+      cowbell(560, 0.2, 0.45);
+    },
+    heartbeat() {
+      tone({ type: "sine", f0: 70, f1: 40, dur: 0.15, vol: 0.45 });
+      tone({ type: "sine", f0: 65, f1: 38, dur: 0.15, vol: 0.32, delay: 0.18 });
+    },
+    milestone(m) {
+      const seq = { 100: [72, 76, 79], 250: [72, 76, 79, 84], 500: [67, 72, 76, 79, 84], 750: [67, 72, 76, 79, 84, 88] }[m] || [72, 79];
+      seq.forEach((n, i) => {
+        tone({ type: "square", f0: NOTE(n), dur: i === seq.length - 1 ? 0.6 : 0.14, vol: 0.1, delay: i * 0.1, filter: 3500 });
+        tone({ type: "triangle", f0: NOTE(n - 12), dur: 0.2, vol: 0.14, delay: i * 0.1 });
+      });
+      cowbell(600, 0.2, seq.length * 0.1);
+      sfx.confettiPop(0.05);
+      setTimeout(() => sfx.randomMoo(), 350);
+    },
+    confettiPop(delay = 0) {
+      noise({ dur: 0.12, vol: 0.4, freq: 2500, type: "bandpass", q: 0.8, delay });
+      for (let i = 0; i < 6; i++) noise({ dur: 0.03, vol: 0.1, freq: 6000, type: "highpass", delay: delay + 0.1 + Math.random() * 0.4 });
     },
     firework() {
-      noise({ dur: 0.35, vol: 0.18, freq: 3000 });
-      tone({ type: "sine", f0: 1200 + Math.random() * 600, f1: 300, dur: 0.4, vol: 0.06 });
+      tone({ type: "sine", f0: 500, f1: 2200, dur: 0.35, vol: 0.05, attack: 0.05 });           // siulan naik
+      noise({ dur: 0.4, vol: 0.3, freq: 3500, f1: 400, delay: 0.32 });                           // DUAR
+      for (let i = 0; i < 10; i++) noise({ dur: 0.025, vol: 0.08, freq: 5000, type: "highpass", delay: 0.45 + Math.random() * 0.7 }); // kretek-kretek
+    },
+    drumRoll(len = 1) {
+      const n = Math.floor(len * 22);
+      for (let i = 0; i < n; i++) noise({ dur: 0.05, vol: 0.06 + (i / n) * 0.18, freq: 1800, type: "bandpass", q: 1, delay: i / 22 });
+      noise({ dur: 0.6, vol: 0.4, freq: 7000, type: "highpass", delay: len }); // crash
+    },
+    fanfare() {
+      sfx.drumRoll(0.9);
+      const notes = [72, 72, 72, 76, 79, 76, 79, 84];
+      const times = [0, 0.12, 0.24, 0.36, 0.6, 0.78, 0.9, 1.1];
+      notes.forEach((n, i) => {
+        const d = 0.95 + times[i];
+        tone({ type: "square", f0: NOTE(n), dur: i === notes.length - 1 ? 1.1 : 0.16, vol: 0.12, delay: d, filter: 3000 });
+        tone({ type: "sawtooth", f0: NOTE(n + 7), dur: i === notes.length - 1 ? 1.1 : 0.16, vol: 0.04, delay: d, filter: 2000 });
+        tone({ type: "triangle", f0: NOTE(n - 12), dur: 0.2, vol: 0.14, delay: d });
+      });
+      setTimeout(() => sfx.mooChoir(), 2200);
     },
   };
+
+  /* ---------- MUSIK LATAR (chiptune ladang, disusun real-time) ---------- */
+  const music = (() => {
+    // progresi C - Am - F - G, 16 langkah per bar
+    const CHORDS = [[48, 52, 55], [45, 48, 52], [41, 45, 48], [43, 47, 50]];
+    const MEL = [
+      [72, 0, 76, 0, 79, 0, 76, 0, 77, 76, 74, 0, 72, 0, 0, 0],
+      [69, 0, 72, 0, 76, 0, 72, 0, 74, 72, 71, 0, 69, 0, 67, 0],
+      [69, 0, 72, 0, 77, 0, 76, 74, 72, 0, 69, 0, 72, 0, 74, 0],
+      [74, 0, 71, 0, 67, 0, 71, 74, 79, 0, 77, 0, 76, 0, 74, 0],
+    ];
+    let timer = 0, step = 0, nextT = 0, playing = false;
+    function tick() {
+      const a = actx; if (!a) return;
+      const frenzy = document.body.classList.contains("frenzy");
+      const boost = document.body.classList.contains("boost");
+      const bpm = frenzy ? 150 : 116;
+      const stepDur = 60 / bpm / 4;
+      const tr = frenzy ? 2 : 0;
+      while (nextT < a.currentTime + 0.15) {
+        const bar = Math.floor(step / 16) % 4, s = step % 16;
+        const ch = CHORDS[bar];
+        const at = nextT;
+        // bass
+        if (s % 4 === 0) tone({ type: "triangle", f0: NOTE(ch[0] - 12 + tr), dur: stepDur * 3, vol: 0.32, at, bus: musicBus });
+        if (s % 4 === 2) tone({ type: "triangle", f0: NOTE(ch[0] + tr), dur: stepDur, vol: 0.2, at, bus: musicBus });
+        // arpeggio
+        if (s % 2 === 1) tone({ type: "square", f0: NOTE(ch[(s >> 1) % 3] + 12 + tr), dur: stepDur * 0.9, vol: 0.035, at, filter: 2500, bus: musicBus });
+        // melodi
+        const m = MEL[bar][s];
+        if (m) tone({ type: "square", f0: NOTE(m + tr), dur: stepDur * 1.8, vol: 0.08, at, filter: 3200, bus: musicBus, vib: 3 });
+        // drum
+        if (s === 0 || s === 8 || (frenzy && s % 4 === 0)) tone({ type: "sine", f0: 140, f1: 45, dur: 0.14, vol: 0.5, at, bus: musicBus });
+        if (s === 4 || s === 12) noise({ dur: 0.12, vol: 0.18, freq: 1800, type: "bandpass", q: 0.8, at, bus: musicBus });
+        if (s % 2 === 0) noise({ dur: 0.03, vol: frenzy ? 0.08 : 0.05, freq: 8000, type: "highpass", at, bus: musicBus });
+        if (boost && s % 2 === 1) noise({ dur: 0.05, vol: 0.06, freq: 9000, type: "highpass", at, bus: musicBus }); // rebana lonceng
+        if (s === 0 && bar === 0) cowbellMusic(at);
+        nextT += stepDur; step++;
+      }
+    }
+    function cowbellMusic(at) {
+      [560, 829].forEach((f) => tone({ type: "square", f0: f, dur: 0.25, vol: 0.03, at, filter: 2600, bus: musicBus }));
+    }
+    return {
+      start() {
+        const a = audio(); if (!a || playing || !musicOn) return;
+        playing = true; step = 0; nextT = a.currentTime + 0.1;
+        timer = setInterval(tick, 40);
+      },
+      stop() { playing = false; clearInterval(timer); },
+      get playing() { return playing; },
+    };
+  })();
 
   /* =========================================================
      PARTIKEL (canvas)
@@ -474,7 +690,8 @@
         const lvl = COMBO_LEVELS[idx];
         S.maxMult = Math.max(S.maxMult, lvl.mult);
         floatText(x, y - 60, `${lvl.label} x${lvl.mult}`, { size: 44, color: "#ffd93d", life: 1.3 });
-        sfx.levelUp();
+        sfx.levelUp(idx);
+        sfx.confettiPop();
         shake(idx >= 3);
         confetti(x, y, 30 + idx * 15);
         if (idx >= 3) { document.body.classList.add("frenzy"); doFlash(); emojiRain("🐄", 14); }
@@ -490,8 +707,9 @@
     retrigger(cowBtn, "squish");
     happyFace();
     retrigger(scoreEl, "pop");
-    sfx.pop(S.combo);
-    if (Math.random() < 0.12 || (S.combo > 0 && S.combo % 15 === 0 && !auto)) sfx.moo(rnd(0.85, 1.25));
+    if (!auto || Math.random() < 0.5) sfx.pop(S.combo);
+    if (performance.now() < S.boostUntil) sfx.jingle();
+    if (Math.random() < 0.1 || (S.combo > 0 && S.combo % 15 === 0 && !auto)) sfx.randomMoo();
     if (Math.random() < 0.03) floatText(x, y - 80, pick(["MOOO!", "MOO~", "MOOOOO!!", "🥛", "💖"]), { size: 40, color: "#ff8fb1" });
 
     if (S.clicks === 1) hint.classList.add("hide");
@@ -516,8 +734,7 @@
   function milestone(m) {
     const msg = { 100: "100! KEREN! 🐮", 250: "250! MOOOMANTAP!", 500: "500! SETENGAH JALAN!", 750: "750! HAMPIR!! 🔥" }[m];
     showBanner(msg);
-    sfx.ding();
-    sfx.moo(0.9);
+    sfx.milestone(m);
     doFlash();
     shake(true);
     confetti(W * 0.15, H, 70, Math.PI / 2.5, -Math.PI / 2.6, 22);
@@ -539,14 +756,14 @@
     if (!S.running) return;
     const cfg = POWERS[name];
     const now = performance.now();
-    if (S.score < cfg.unlock || now < S.cdUntil[name]) return;
+    if (S.score < cfg.unlock || now < S.cdUntil[name]) { sfx.denied(); return; }
     S.cdUntil[name] = now + cfg.cooldown;
     const { x, y } = cowCenter();
 
     if (name === "bell") {
       S.boostUntil = now + cfg.duration;
       showBanner("LONCENG EMAS x2! 🔔");
-      sfx.coin(); sfx.ding();
+      sfx.bellPower();
       confetti(x, y, 60);
       emojiRain("🔔", 12);
     } else if (name === "storm") {
@@ -554,14 +771,20 @@
       S.stormAcc = 0;
       showBanner("BADAI SUSU! 🥛🥛🥛");
       sfx.whoosh();
+      sfx.stormStart();
       emojiRain("🥛", 30);
     } else if (name === "mega") {
       showBanner("MEGA MOOOOO!!! 💥");
-      sfx.boom(); sfx.moo(0.7);
-      doFlash(); shake(true);
-      for (let i = 0; i < 4; i++) setTimeout(() => burst(x + rnd(-80, 80), y + rnd(-80, 80), 3), i * 90);
-      confetti(x, y, 150, Math.PI * 2, 0, 20);
-      addScore(40, x, y - 40, "#ff5e8a");
+      sfx.megaCharge();
+      retrigger(cowBtn, "squish");
+      setTimeout(() => {
+        if (!S.running) return;
+        sfx.boom(); mooVoice({ pitch: 0.65, dur: 1.4, vol: 0.6, shape: "bull" });
+        doFlash(); shake(true);
+        for (let i = 0; i < 4; i++) setTimeout(() => burst(x + rnd(-80, 80), y + rnd(-80, 80), 3), i * 90);
+        confetti(x, y, 150, Math.PI * 2, 0, 20);
+        addScore(40, x, y - 40, "#ff5e8a");
+      }, 520);
     }
   }
 
@@ -573,7 +796,10 @@
       const active = (name === "bell" && now < S.boostUntil) || (name === "storm" && now < S.stormUntil);
       btn.classList.toggle("locked", locked);
       btn.classList.toggle("active", active);
-      btn.classList.toggle("ready", !locked && cdLeft === 0 && S.running);
+      const ready = !locked && cdLeft === 0 && S.running;
+      if (ready && !S.wasReady[name]) sfx.powerReady();
+      S.wasReady[name] = ready;
+      btn.classList.toggle("ready", ready);
       btn.disabled = locked || cdLeft > 0 || !S.running;
       btn.querySelector(".p-cd").style.height = active ? "0%" : (cdLeft / cfg.cooldown) * 100 + "%";
     }
@@ -590,7 +816,7 @@
     S.goldVX = rnd(-2.5, 2.5) || 1.5;
     S.goldVY = rnd(-1.5, 1.5);
     goldCow.classList.add("show");
-    sfx.coin();
+    sfx.goldSpawn();
   }
 
   goldCow.addEventListener("pointerdown", (e) => {
@@ -601,7 +827,7 @@
     S.goldUntil = 0;
     scheduleGold(performance.now());
     const x = e.clientX, y = e.clientY;
-    sfx.coin(); sfx.moo(1.4);
+    sfx.goldCatch();
     firework(x, y);
     confetti(x, y, 60);
     showBanner("SAPI EMAS! +25 ✨");
@@ -628,8 +854,10 @@
     $("newRecord").classList.toggle("show", isRecord);
 
     showBanner("1000!!! MOOOOOO!!! 🏆");
+    music.stop();
+    sfx.stormStop();
+    sfx.confettiPop();
     sfx.fanfare();
-    setTimeout(() => sfx.moo(1), 400);
     doFlash(); shake(true);
     emojiRain("🐄", 40);
     confetti(0, H, 120, Math.PI / 3, -Math.PI / 3, 26);
@@ -659,7 +887,11 @@
     updateHUD();
     $("startScreen").classList.remove("show");
     $("winScreen").classList.remove("show");
-    sfx.moo(1);
+    sfx.stormStop();
+    sfx.startJingle();
+    setTimeout(() => sfx.moo(1), 550);
+    music.stop();
+    setTimeout(() => { if (S.running) music.start(); }, 900);
     const { x, y } = cowCenter();
     confetti(x, y, 80);
     cowBtn.focus({ preventScroll: true });
@@ -702,11 +934,30 @@
     muted = !muted;
     store.set("moooo-muted", muted ? "1" : "0");
     renderMute();
-    if (!muted) sfx.pop(5);
+    audio(); setMasterMute();
+    if (!muted) sfx.uiClick();
   });
+
+  musicBtn.addEventListener("click", () => {
+    musicOn = !musicOn;
+    store.set("moooo-music", musicOn ? "1" : "0");
+    renderMusic();
+    sfx.uiClick();
+    if (musicOn && S.running) music.start(); else music.stop();
+  });
+
+  // suara hover & klik untuk semua tombol
+  document.querySelectorAll(".power, .big-btn, .icon-btn").forEach((b) => {
+    b.addEventListener("pointerenter", (e) => { if (e.pointerType === "mouse" && !b.disabled) sfx.hover(); });
+  });
+  document.querySelectorAll(".big-btn").forEach((b) => b.addEventListener("pointerdown", () => sfx.uiClick()));
 
   function renderMute() {
     muteBtn.querySelector("img").src = muted ? "assets/sound-off.svg" : "assets/sound-on.svg";
+  }
+  function renderMusic() {
+    musicBtn.querySelector("img").src = musicOn ? "assets/music-on.svg" : "assets/music-off.svg";
+    musicBtn.classList.toggle("off", !musicOn);
   }
   function renderBest() { bestEl.textContent = best ? best.toFixed(1) + "s" : "—"; }
 
@@ -724,7 +975,7 @@
       // combo meluruh
       const since = now - S.lastClick;
       if (S.combo > 0 && since > COMBO_WINDOW) {
-        if (S.levelIdx > 0) floatText(W / 2, H * 0.35, "combo putus...", { size: 26, color: "#cfd8e3", life: 0.8 });
+        if (S.levelIdx > 0) { floatText(W / 2, H * 0.35, "combo putus...", { size: 26, color: "#cfd8e3", life: 0.8 }); sfx.comboBreak(); }
         S.combo = 0; S.levelIdx = 0;
         document.body.classList.remove("frenzy");
       }
@@ -744,6 +995,16 @@
           hitCow(x + rnd(-r.width * 0.4, r.width * 0.4), y + rnd(-r.height * 0.4, r.height * 0.3), { auto: true });
         }
         if (Math.random() < 0.6) add({ type: "drop", x: rnd(0, W), y: -20, vx: rnd(-1, 1), vy: rnd(6, 10), g: 0.3, life: 2, size: rnd(8, 14) });
+        if (Math.random() < 0.15) sfx.drip();
+      } else if (S.stormUntil) {
+        S.stormUntil = 0;
+        sfx.stormStop();
+      }
+
+      // deg-degan menjelang 1000
+      if (S.score >= 900 && now > S.nextBeat) {
+        sfx.heartbeat();
+        S.nextBeat = now + (S.score >= 970 ? 450 : 750);
       }
 
       // sapi emas
@@ -752,6 +1013,8 @@
         if (now > S.goldUntil) {
           S.goldUntil = 0;
           goldCow.classList.remove("show");
+          sfx.goldMiss();
+          floatText(W / 2, H * 0.3, "sapi emas kabur... 🏃", { size: 26, color: "#ffd93d", life: 1 });
           scheduleGold(now);
         } else {
           const k = dt * 60;

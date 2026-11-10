@@ -17,7 +17,16 @@ Buka `index.html` di browser, lalu pencet sapinya (klik / tap / tombol **SPASI**
 ## Efek
 Partikel canvas (tetes susu, bintang, hati, percikan, daun, confetti, kembang api, gelombang kejut),
 sapi SVG animasi (kedip, mata mengikuti kursor, telinga mengepak, lonceng bergoyang, ekspresi senang),
-screen shake, flash, latar pelangi saat frenzy, dan suara "moo" sintesis WebAudio (bisa di-mute).
+screen shake, flash, dan latar pelangi saat frenzy.
+
+## Suara (semua disintesis WebAudio, tanpa file audio)
+- **Musik latar** chiptune ladang — makin cepat & naik nada saat FRENZY, ada rebana saat Lonceng Emas (tombol 🎵).
+- **6 variasi bunyi pencet** (pop, boing, squeak, cipratan susu, lonceng sapi, bonk) — nadanya naik seiring combo.
+- **6 jenis "moo"**: panjang, pendek, anak sapi, banteng, moo-moo, dan moo bertanya; paduan suara moo saat menang.
+- Level combo + terompet, combo putus ("wah-wah"), sapi emas muncul/ketangkap/kabur, lonceng emas,
+  hujan + petir Badai Susu, isi-tenaga + ledakan MEGA MOO, power-up siap, tombol terkunci, hover/klik tombol,
+  jingle mulai, jingle tiap milestone, confetti, kembang api (siulan + duar + kretek), deg-degan di skor 900+,
+  drum roll + fanfare kemenangan. Tombol 🔊 untuk mute semua.
 
 ## Struktur
 ```

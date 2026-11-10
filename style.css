@@ -128,6 +128,8 @@ body.frenzy #rainbow { opacity: 1; }
   box-shadow: 0 3px 0 var(--ink); display: grid; place-items: center; padding: 6px; transition: transform .1s;
 }
 .icon-btn img { width: 100%; height: 100%; }
+#musicBtn { background: #7fd3ff; }
+#musicBtn.off { background: #d7dde4; }
 .icon-btn:active { transform: translateY(3px); box-shadow: none; }
 
 /* ================= SKOR ================= */
